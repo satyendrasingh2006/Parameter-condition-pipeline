@@ -1,0 +1,140 @@
+pool: Huawei-Agent
+
+parameters:
+- name: tfsec
+  displayName: TfSec
+  type: boolean
+
+- name: tflint
+  displayName: TfLint
+  type: boolean
+
+- name: initvalidate
+  displayName: Init and Validate
+  type: boolean
+
+- name: plan
+  displayName: Plan
+  type: boolean
+
+- name: manualapproval
+  displayName: Manual Approval
+  type: boolean
+
+- name: apply
+  displayName: Apply
+  type: boolean
+
+trigger:
+- main
+- feature/*
+
+stages:
+- stage: tfsec
+  condition: ${{ parameters.tfsec }}
+  dependsOn: []
+  displayName: TfSec
+  jobs:
+  - job: TfSec
+    displayName: TfSec
+    steps:
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: 'tfsec .'
+
+- stage: tflint
+  condition: ${{ parameters.tflint }}
+  dependsOn: []
+  displayName: TfLint
+  jobs:
+  - job: tflint
+    displayName: TfLint
+    steps:
+    - task: PowerShell@2
+      inputs:
+        targetType: 'inline'
+        script: 'tflint --recursive --force'
+
+- stage: initvalidate
+  condition: ${{ parameters.initvalidate }}
+  dependsOn:
+  - tfsec
+  - tflint
+  displayName: Init and Validate
+  jobs:
+  - job: initvalidate
+    displayName: Init and Validate
+    steps:
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        backendServiceArm: 'Huawei-service-connection'
+        backendAzureRmStorageAccountName: 'stghuawei1'
+        backendAzureRmContainerName: 'huaweicontainer'
+        backendAzureRmKey: 'rgs.tfstate'
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'validate'
+
+- stage: plan
+  condition: ${{ parameters.plan }}
+  dependsOn:
+  - initvalidate
+  displayName: plan
+  jobs:
+  - job: plan
+    displayName: Plan
+    steps:
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        backendServiceArm: 'Huawei-service-connection'
+        backendAzureRmStorageAccountName: 'stghuawei1'
+        backendAzureRmContainerName: 'huaweicontainer'
+        backendAzureRmKey: 'rgs.tfstate'
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        environmentServiceNameAzureRM: 'Huawei-service-connection'
+
+- stage: manualapproval
+  condition: ${{ parameters.manualapproval }}
+  dependsOn:
+  - plan
+  pool: server
+  displayName: Manual Approval
+  jobs:
+  - job: manualapproval
+    displayName: Manual Approval
+    steps:
+    - task: ManualValidation@1
+      inputs:
+        notifyUsers: 'abc@gmail.com'
+
+- stage: apply
+  condition: ${{ parameters.apply }}
+  dependsOn:
+  - manualapproval
+  displayName: apply
+  jobs:
+  - job: apply
+    displayName: Apply
+    steps:
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        backendServiceArm: 'Huawei-service-connection'
+        backendAzureRmStorageAccountName: 'stghuawei1'
+        backendAzureRmContainerName: 'huaweicontainer'
+        backendAzureRmKey: 'rgs.tfstate'
+    - task: TerraformTask@5
+      inputs:
+        provider: 'azurerm'
+        command: 'apply'
+        environmentServiceNameAzureRM: 'Huawei-service-connection'
